@@ -50,8 +50,7 @@ class OurGraph2Vec(Estimator):
         erase_base_features: bool = False,
         cbowlike: bool = False,
         window_size: int = 4
-        #TODO think on the way of using window_size and how to define subgraphs that are "close"
-
+        # TODO think on the way of using window_size and how to define subgraphs that are "close"
     ):
 
         self.wl_iterations = wl_iterations
@@ -64,11 +63,10 @@ class OurGraph2Vec(Estimator):
         self.min_count = min_count
         self.seed = seed
         self.erase_base_features = erase_base_features
-        self.cbowlike=int(cbowlike)
-        self.window_size_cbow=window_size if cbowlike else 0
+        self.cbowlike = int(cbowlike)
+        self.window_size_cbow = window_size if cbowlike else 0
 
-
-    def fit(self, graphs: List[nx.classes.graph.Graph],orderings:None):
+    def fit(self, graphs: List[nx.classes.graph.Graph], orderings: None):
         """
         Fitting a Graph2Vec model.
 
@@ -83,9 +81,15 @@ class OurGraph2Vec(Estimator):
             )
             for graph in graphs
         ]
-        change_ordering= lambda features,it:features if orderings is None else features[orderings[it]]
+        change_ordering = (
+            lambda features, it: features
+            if orderings is None
+            else features[orderings[it]]
+        )
         documents = [
-            TaggedDocument(words=change_ordering(doc.get_graph_features(),i), tags=[str(i)])
+            TaggedDocument(
+                words=change_ordering(np.array(doc.get_graph_features()), i), tags=[str(i)]
+            )
             for i, doc in enumerate(documents)
         ]
 
@@ -104,7 +108,6 @@ class OurGraph2Vec(Estimator):
 
         self._embedding = [self.model.dv[str(i)] for i, _ in enumerate(documents)]
 
-
     def get_embedding(self) -> np.array:
         r"""Getting the embedding of graphs.
 
@@ -113,10 +116,9 @@ class OurGraph2Vec(Estimator):
         """
         return np.array(self._embedding)
 
-
     def infer(self, graphs) -> np.array:
         """Infer the graph embeddings.
-    
+
         Arg types:
             * **graphs** *(List of NetworkX graphs)* - The graphs to be embedded.
 
@@ -144,7 +146,7 @@ class OurGraph2Vec(Estimator):
         )
 
         return embedding
-    
+
     def order_nodes_by_embedding():
         ### 847. Shortest Path Visiting All Nodes LeeCode, issue o(n*2^n) complexity xD
         pass
