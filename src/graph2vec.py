@@ -68,7 +68,7 @@ class OurGraph2Vec(Estimator):
         self.window_size_cbow=window_size if cbowlike else 0
 
 
-    def fit(self, graphs: List[nx.classes.graph.Graph]):
+    def fit(self, graphs: List[nx.classes.graph.Graph],orderings:None):
         """
         Fitting a Graph2Vec model.
 
@@ -83,8 +83,9 @@ class OurGraph2Vec(Estimator):
             )
             for graph in graphs
         ]
+        change_ordering= lambda features,it:features if orderings is None else features[orderings[it]]
         documents = [
-            TaggedDocument(words=doc.get_graph_features(), tags=[str(i)])
+            TaggedDocument(words=change_ordering(doc.get_graph_features(),i), tags=[str(i)])
             for i, doc in enumerate(documents)
         ]
 
@@ -143,3 +144,7 @@ class OurGraph2Vec(Estimator):
         )
 
         return embedding
+    
+    def order_nodes_by_embedding():
+        ### 847. Shortest Path Visiting All Nodes LeeCode, issue o(n*2^n) complexity xD
+        pass
