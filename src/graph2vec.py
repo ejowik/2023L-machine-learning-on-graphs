@@ -1,6 +1,6 @@
 # The code is only a little modification of the code available at https://karateclub.readthedocs.io/en/latest/_modules/karateclub/graph_embedding/graph2vec.html#Graph2Vec
 
-from typing import List
+from typing import List, Callable
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -52,7 +52,6 @@ class OurGraph2Vec(Estimator):
         window_size: int = 4
         # TODO think on the way of using window_size and how to define subgraphs that are "close"
     ):
-
         self.wl_iterations = wl_iterations
         self.attributed = attributed
         self.dimensions = dimensions
@@ -88,7 +87,8 @@ class OurGraph2Vec(Estimator):
         )
         documents = [
             TaggedDocument(
-                words=change_ordering(np.array(doc.get_graph_features()), i), tags=[str(i)]
+                words=change_ordering(np.array(doc.get_graph_features()), i),
+                tags=[str(i)],
             )
             for i, doc in enumerate(documents)
         ]
@@ -147,6 +147,37 @@ class OurGraph2Vec(Estimator):
 
         return embedding
 
-    def order_nodes_by_embedding():
-        ### 847. Shortest Path Visiting All Nodes LeeCode, issue o(n*2^n) complexity xD
-        pass
+
+class Ensemble_G2V(Estimator):
+    def __init__(
+        self,
+        skipgram: OurGraph2Vec = OurGraph2Vec(),
+        cbow: OurGraph2Vec = OurGraph2Vec(cbowlike=True),
+        weighting_function: Callable = np.add,
+    ):
+        self.skipgram = skipgram
+        self.cbow = cbow
+        self.weighting_function = weighting_function
+
+    def fit(self, graphs: List[nx.classes.graph.Graph], orderings: None):
+        try:
+            self.skipgram.get_embedding()
+        except:
+            self.skipgram.fit(graphs, orderings)
+        try:
+            self.cbow.get_embedding()
+        except:
+            self.cbow.fit(graphs, orderings)
+
+    def set_weighting_function(self, function):
+        self.weighting_function = function
+
+    def get_embedding(self, part: int = 2) -> np.array:
+        return self.weighting_function(
+                self.skipgram.get_embedding(), self.cbow.get_embedding()
+            )
+
+    def infer(self, graphs, part: int = 2) -> np.array:
+        return self.weighting_function(
+                self.skipgram.infer(graphs), self.cbow.infer(graphs)
+            )
