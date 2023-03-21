@@ -43,7 +43,7 @@ class OurGraph2Vec(Estimator):
         dimensions: int = 128,
         workers: int = 4,
         down_sampling: float = 0.0001,
-        epochs: int = 5,
+        epochs: int = 10,
         learning_rate: float = 0.025,
         min_count: int = 5,
         seed: int = 42,
@@ -65,7 +65,7 @@ class OurGraph2Vec(Estimator):
         self.cbowlike = int(cbowlike)
         self.window_size_cbow = window_size if cbowlike else 0
 
-    def fit(self, graphs: List[nx.classes.graph.Graph], orderings: None):
+    def fit(self, graphs: List[nx.classes.graph.Graph], orderings=None):
         """
         Fitting a Graph2Vec model.
 
@@ -80,10 +80,16 @@ class OurGraph2Vec(Estimator):
             )
             for graph in graphs
         ]
+        transform_ordering = lambda x: [
+            idx
+            for sublist in [[3 * i, 3 * i + 1, 3 * i + 2] for i in x]
+            for idx in sublist
+        ]
+        # 3*ordering+[0,1,2]*len(ordering)
         change_ordering = (
             lambda features, it: features
             if orderings is None
-            else features[orderings[it]]
+            else features[transform_ordering(orderings[it])]
         )
         documents = [
             TaggedDocument(
@@ -174,10 +180,10 @@ class Ensemble_G2V(Estimator):
 
     def get_embedding(self, part: int = 2) -> np.array:
         return self.weighting_function(
-                self.skipgram.get_embedding(), self.cbow.get_embedding()
-            )
+            self.skipgram.get_embedding(), self.cbow.get_embedding()
+        )
 
     def infer(self, graphs, part: int = 2) -> np.array:
         return self.weighting_function(
-                self.skipgram.infer(graphs), self.cbow.infer(graphs)
-            )
+            self.skipgram.infer(graphs), self.cbow.infer(graphs)
+        )
