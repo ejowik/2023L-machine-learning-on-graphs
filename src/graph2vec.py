@@ -49,7 +49,8 @@ class OurGraph2Vec(Estimator):
         seed: int = 42,
         erase_base_features: bool = False,
         cbowlike: bool = False,
-        window_size: int = 4
+        window_size: int = 4,
+        features_mixed: bool = False
         # TODO think on the way of using window_size and how to define subgraphs that are "close"
     ):
         self.wl_iterations = wl_iterations
@@ -64,6 +65,7 @@ class OurGraph2Vec(Estimator):
         self.erase_base_features = erase_base_features
         self.cbowlike = int(cbowlike)
         self.window_size_cbow = window_size if cbowlike else 0
+        self.features_mixed = features_mixed
 
     def fit(self, graphs: List[nx.classes.graph.Graph], orderings=None):
         """
@@ -80,11 +82,17 @@ class OurGraph2Vec(Estimator):
             )
             for graph in graphs
         ]
-        transform_ordering = lambda x: [
-            idx
-            for sublist in [[3 * i, 3 * i + 1, 3 * i + 2] for i in x]
-            for idx in sublist
-        ]
+        transform_ordering = (
+            lambda x: [
+                idx
+                for sublist in [[3 * i, 3 * i + 1, 3 * i + 2] for i in x]
+                for idx in sublist
+            ]
+            if self.features_mixed
+            else [3 * el for el in x]
+            + [3 * el + 1 for el in x]
+            + [3 * el + 2 * 1 for el in x]
+        )
         # 3*ordering+[0,1,2]*len(ordering)
         change_ordering = (
             lambda features, it: features

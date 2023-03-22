@@ -9,17 +9,11 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from typing import Tuple, List
 
-from sklearn.model_selection import train_test_split, cross_val_score, LeaveOneOut
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.linear_model import LogisticRegression
 
-from IPython.display import Markdown, display
-from tqdm.notebook import tqdm
 
-sys.path.append("../")
-from src.graph2vec import OurGraph2Vec, Ensemble_G2V
-
-
-def read_stargazers_dataset(path: str) -> Tuple[List, pd.Series]:
+def read_stargazers_dataset(path: str, verbose: bool = True) -> Tuple[List, pd.Series]:
     """
     Function to read the graphs and their labels from github Stargazers dataset.
     Args:
@@ -33,7 +27,10 @@ def read_stargazers_dataset(path: str) -> Tuple[List, pd.Series]:
     with open(data_path) as f:
         json_content = json.load(f)
     target = pd.read_csv(target_path, index_col="id").squeeze("columns")
-    return [nx.Graph(elem) for key, elem in json_content.items()], target
+    data = [nx.Graph(elem) for key, elem in json_content.items()]
+    if verbose:
+        print(f"Loaded {len(data)} graphs")
+    return data, target
 
 
 def calculate_measure(func, G, kwargs={}):
