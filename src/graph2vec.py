@@ -1,6 +1,6 @@
 # The code is only a little modification of the code available at https://karateclub.readthedocs.io/en/latest/_modules/karateclub/graph_embedding/graph2vec.html#Graph2Vec
 
-from typing import List, Callable
+from typing import Callable, Union
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -34,6 +34,7 @@ class OurGraph2Vec(Estimator):
         erase_base_features (bool): Erasing the base features. Default is False.
         use_cbow (bool): whether to use PV-DM (cbow-like) or PV-DBOW (skipgram-like) like approach
         window_size (int): when using PV-DM version defines the window size used for prediction
+        features_per_wl_iteration (bool): When using nodes ordering, when fitting the dataset, whether to sort first by nodes order or W-L iteration. Default is False
     """
 
     def __init__(
@@ -50,7 +51,7 @@ class OurGraph2Vec(Estimator):
         erase_base_features: bool = False,
         cbowlike: bool = False,
         window_size: int = 4,
-        features_mixed: bool = False
+        features_per_wl_iteration: bool = False
         # TODO think on the way of using window_size and how to define subgraphs that are "close"
     ):
         self.wl_iterations = wl_iterations
@@ -64,44 +65,33 @@ class OurGraph2Vec(Estimator):
         self.seed = seed
         self.erase_base_features = erase_base_features
         self.cbowlike = int(cbowlike)
-        self.window_size_cbow = window_size if cbowlike else 0
-        self.features_mixed = features_mixed
+        self.window_size = window_size if cbowlike else 0
+        self.features_per_wl_iteration = features_per_wl_iteration
 
-    def fit(self, graphs: List[nx.classes.graph.Graph], orderings=None):
+    def fit(
+        self, graphs: list[nx.classes.graph.Graph], orderings: Union[list, None] = None
+    ):
         """
         Fitting a Graph2Vec model.
 
         Arg types:
-            * **graphs** *(List of NetworkX graphs)* - The graphs to be embedded.
+            * **graphs** *(list of NetworkX graphs)* - The graphs to be embedded.
         """
         self._set_seed()
         graphs = self._check_graphs(graphs)
+
         documents = [
             WeisfeilerLehmanHashing(
                 graph, self.wl_iterations, self.attributed, self.erase_base_features
             )
             for graph in graphs
         ]
-        transform_ordering = (
-            lambda x: [
-                idx
-                for sublist in [[3 * i, 3 * i + 1, 3 * i + 2] for i in x]
-                for idx in sublist
-            ]
-            if self.features_mixed
-            else [3 * el for el in x]
-            + [3 * el + 1 for el in x]
-            + [3 * el + 2 * 1 for el in x]
-        )
-        # 3*ordering+[0,1,2]*len(ordering)
-        change_ordering = (
-            lambda features, it: features
-            if orderings is None
-            else features[transform_ordering(orderings[it])]
-        )
+
         documents = [
             TaggedDocument(
-                words=change_ordering(np.array(doc.get_graph_features()), i),
+                words=doc.get_graph_features()
+                if orderings is None
+                else self.arrange_features(doc.get_graph_features(), orderings[i]),
                 tags=[str(i)],
             )
             for i, doc in enumerate(documents)
@@ -110,7 +100,7 @@ class OurGraph2Vec(Estimator):
         self.model = Doc2Vec(
             documents,
             vector_size=self.dimensions,
-            window=self.window_size_cbow,
+            window=self.window_size,
             min_count=self.min_count,
             dm=self.cbowlike,
             sample=self.down_sampling,
@@ -121,6 +111,28 @@ class OurGraph2Vec(Estimator):
         )
 
         self._embedding = [self.model.dv[str(i)] for i, _ in enumerate(documents)]
+
+    def arrange_features(self, features: list[str], ordering: list[int]):
+        """Arranges `features` according to given `ordering` of nodes. If self.features_per_wl_iteration=True then
+        the 1st level sorting is per iteration otherwise per ordering given, otherwise the levels are switched
+        """
+        feat_per_node = 1 + self.wl_iterations
+        arrangement = (
+            [
+                feat_per_node * node + i
+                for i in range(feat_per_node)
+                for node in ordering
+            ]
+            # [0,2,1]->[0,6,3,1,7,4,2,8,5]
+            if self.features_per_wl_iteration
+            else [
+                feat_per_node * node + i
+                for node in ordering
+                for i in range(feat_per_node)
+            ]
+            # [0,2,1]->[0,1,2,6,7,8,3,4,5]
+        )
+        return [features[it] for it in arrangement]
 
     def get_embedding(self) -> np.array:
         r"""Getting the embedding of graphs.
@@ -173,7 +185,9 @@ class Ensemble_G2V(Estimator):
         self.cbow = cbow
         self.weighting_function = weighting_function
 
-    def fit(self, graphs: List[nx.classes.graph.Graph], orderings: None):
+    def fit(
+        self, graphs: list[nx.classes.graph.Graph], orderings: Union[list, None] = None
+    ):
         try:
             self.skipgram.get_embedding()
         except:
