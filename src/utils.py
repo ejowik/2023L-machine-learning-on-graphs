@@ -5,6 +5,8 @@ import sys
 import time
 from typing import List, Tuple
 
+from tqdm.notebook import tqdm
+
 import dgl
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -181,3 +183,54 @@ def weighted_projections(alpha: float):
         1,
         np.concatenate((x, y), axis=1),
     )
+
+
+MEASURES = [
+    nx.pagerank,
+    nx.closeness_centrality,
+    # nx.degree_centrality,
+    nx.current_flow_closeness_centrality,
+    # nx.information_centrality,  # identical to: current_flow_closeness_centrality
+    # nx.betweenness_centrality,
+    # nx.current_flow_betweenness_centrality, #too long (50 minutes :'( )
+    # nx.approximate_current_flow_betweenness_centrality,
+]
+
+KWARGS_DICT = {
+    nx.pagerank: {},
+    nx.closeness_centrality: {},
+    nx.degree_centrality: {},
+    nx.current_flow_closeness_centrality: {},
+    # nx.information_centrality: {},
+    nx.betweenness_centrality: {},
+    nx.current_flow_betweenness_centrality: {},
+    nx.approximate_current_flow_betweenness_centrality: {},
+}
+
+
+def generate_orderings(dirpath, graphs):
+    n_elem = len(graphs)
+    order_dict = {}
+
+    for measure in tqdm(MEASURES):
+        # centralities calc.
+        print(f"Calculating {measure.__name__}...")
+
+        centralities = [None] * n_elem
+        for idx, G in tqdm(enumerate(graphs), total=n_elem):
+            centralities[idx] = calculate_measure(
+                func=measure, G=G, kwargs=KWARGS_DICT[measure]
+            )
+
+        # ordering wrt. centralities
+        print(f"Ordering wrt. {measure.__name__}...")
+        ams = [None for i in range(n_elem)]
+
+        for it, central_dict in tqdm(enumerate(centralities), total=n_elem):
+            ams[it] = np.array(
+                sorted(central_dict, key=central_dict.get), dtype=np.int64
+            )
+
+        order_dict[measure.__name__] = ams
+
+        np.save(f"{dirpath}/orderings.npy", order_dict)
