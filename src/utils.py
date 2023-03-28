@@ -150,7 +150,12 @@ def one_by_projection(keep_skipgram: bool = True, proj_on_sum: bool = True):
 
 def get_differences_of_projections(vectors):
     x, y = vectors
-    return np.concatenate((x + y, y - project_v_on_w(y, x + y)))
+    return np.concatenate(
+        (
+            x + y,
+            np.linalg.norm(x + y) / np.linalg.norm(y) * (y - project_v_on_w(y, x + y)),
+        )
+    )
 
 
 def projection_diff():
