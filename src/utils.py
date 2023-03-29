@@ -1,11 +1,10 @@
+import glob
 import json
 import os
 import pickle
 import sys
 import time
 from typing import List, Tuple
-
-from tqdm.notebook import tqdm
 
 import dgl
 import matplotlib.pyplot as plt
@@ -15,6 +14,7 @@ import pandas as pd
 import torch
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import cross_val_score, train_test_split
+from tqdm.notebook import tqdm
 
 
 def read_stargazers_dataset(path: str, verbose: bool = True) -> Tuple[List, pd.Series]:
@@ -234,3 +234,54 @@ def generate_orderings(dirpath, graphs):
         order_dict[measure.__name__] = ams
 
         np.save(f"{dirpath}/orderings.npy", order_dict)
+
+
+from sklearn.model_selection import cross_val_predict
+
+
+def generate_results(embeddings, labels, classifier, method, **kwargs):
+    n_classes = len(set(labels))
+    pred_proba = cross_val_predict(
+        classifier,
+        X=embeddings,
+        y=labels,
+        method="predict_proba",
+        **kwargs,
+    )
+    if n_classes == 2:
+        return pd.DataFrame(
+            {
+                "graph_id": np.arange(len(labels)),
+                "method": method,
+                "probability_prediction": pred_proba[:, 1].round(4),
+                "binary_prediction": (pred_proba[:, 1] > 0.5).astype(int),
+                "true_label": labels,
+            }
+        )
+    return pd.DataFrame(
+        {
+            "graph_id": range(len(labels)),
+            "method": method,
+            "binary_prediction": np.argmax(pred_proba, axis=1),
+            "true_label": labels,
+        }
+        | {f"probability_prediction_{cl}": pred_proba[:, cl] for cl in range(n_classes)}
+    )
+
+
+def load(fpath):
+    data = json.load(open(fpath))
+    label = data["label"]
+    del data["label"]
+    G = nx.node_link_graph(data)
+    return G, label
+
+
+def load_artificial(dirpath):
+    graphs = []
+    labels = []
+    for fpath in tqdm(glob.glob(os.path.join(dirpath, "*.json"))):
+        g, l = load(fpath)
+        graphs.append(g)
+        labels.append(l)
+    return graphs, labels
