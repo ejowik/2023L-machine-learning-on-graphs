@@ -210,6 +210,49 @@ class MultiClassificationEvaluator:
             plt.xlabel("Predicted value", fontsize=14)
             plt.ylabel("Actual value", fontsize=14)
             plt.show()
+            
+    def plot_confusion_matrices_grid(self, cols_number_on_plot: int, plot_title: str):
+        """Plot confusion matrices for given predictions
+
+        Args:
+            threshold (float, optional): Threshold for predictions. Defaults to 0.5.
+        """
+
+        def pd_confusion_matrix(df):
+            return metrics.confusion_matrix(df["true_label"], df["binary_prediction"])
+
+        confusion_matrix_per_group = (
+            self.predictions.groupby(["method"])
+            .apply(pd_confusion_matrix)
+            .reset_index(name="confusion_matrix")
+        )
+        
+        def draw_heatmap(*args, **kwargs):
+            data = kwargs.pop("data")
+            sns.heatmap(
+                data["confusion_matrix"].tolist()[0],
+                annot=True,
+                square=True,
+                fmt="g",
+                **kwargs,
+            )
+
+        conf_matrix_values = np.concatenate(
+            np.array(confusion_matrix_per_group["confusion_matrix"])
+        ).ravel()
+
+        fg = sns.FacetGrid(
+            confusion_matrix_per_group, col="method", col_wrap=cols_number_on_plot
+        )
+        cbar_ax = fg.fig.add_axes([1., 0.3, 0.02, 0.4])
+        fg.map_dataframe(
+            draw_heatmap, cbar_ax=cbar_ax, vmin=0, vmax=conf_matrix_values.max()
+        )
+        fg.set_titles(col_template="{col_name}")
+        fg.fig.subplots_adjust(wspace=0.1, hspace=0.1)
+        fg.set_axis_labels("Predicted", "Actual")
+        fg.fig.suptitle(f"{plot_title}", y=1.05)
+        fg.fig.show()
 
     def plot_precision_recall(self, width: int, height: int):
 
