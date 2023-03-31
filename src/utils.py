@@ -313,7 +313,7 @@ def cross_validate_graphs(graphs, ordering, labels, n_splits, embedder, cls, met
         res.loc[test_idx, "fold"] = it
         X_test = embedder.infer(Graphs_test)
         res.loc[test_idx, "binary_prediction"] = cls.predict(X_test)
-        y_pred_proba = cls.predict_proba(X_test).round(4)
+        y_pred_proba = cls.predict_proba(X_test)
         proba_pred_dict = proba_pred_dict | {
             test_idx[it]: y_pred_proba[it] for it in range(len(test_idx))
         }
