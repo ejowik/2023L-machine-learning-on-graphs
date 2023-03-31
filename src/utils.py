@@ -319,10 +319,9 @@ def cross_validate_graphs(graphs, ordering, labels, n_splits, embedder, cls, met
         }
 
     res["probability_prediction"] = res["graph_id"].map(proba_pred_dict)
-    for i in range(n_classes):
-        res[f"probability_prediction_{i}"] = res["probability_prediction"].apply(
-            lambda x: x[i] if len(x) > i else None
-        )
+    res[[f"probability_prediction_{i}" for i in range(n_classes)]] = pd.DataFrame(
+        res["probability_prediction"].tolist(), index=res.index
+    )
     res = res.astype({"fold": "int"}).drop(columns="probability_prediction")
     if n_classes == 2:
         res = res.drop(columns=["probability_prediction_0"]).rename(
