@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import torch
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.model_selection import cross_val_score, train_test_split, StratifiedKFold
 from tqdm.notebook import tqdm
 
 
@@ -285,3 +285,47 @@ def load_artificial(dirpath):
         graphs.append(g)
         labels.append(l)
     return graphs, labels
+
+
+def cross_validate_graphs(graphs, ordering, labels, n_splits, embedder, cls, method):
+    n_classes = len(set(labels))
+    proba_pred_dict = {}
+    res = pd.DataFrame(
+        {
+            "true_label": labels,
+            "graph_id": np.arange(len(labels)),
+            "method": method,
+            "binary_prediction": -1,
+        }
+    )
+    skf = StratifiedKFold(n_splits=n_splits)
+    for it, (train_idx, test_idx) in tqdm(
+        enumerate(skf.split(graphs, labels)), total=n_splits, leave=False
+    ):
+        Graphs_train = [graphs[it] for it in train_idx]
+        y_train = [labels[it] for it in train_idx]
+        train_ordering = [ordering[it] for it in train_idx]
+        embedder.fit(Graphs_train, train_ordering)
+        X_train = embedder.get_embedding()
+        cls.fit(X_train, y_train)
+
+        Graphs_test = [graphs[it] for it in test_idx]
+        res.loc[test_idx, "fold"] = it
+        X_test = embedder.infer(Graphs_test)
+        res.loc[test_idx, "binary_prediction"] = cls.predict(X_test)
+        y_pred_proba = cls.predict_proba(X_test).round(4)
+        proba_pred_dict = proba_pred_dict | {
+            test_idx[it]: y_pred_proba[it] for it in range(len(test_idx))
+        }
+
+    res["probability_prediction"] = res["graph_id"].map(proba_pred_dict)
+    for i in range(n_classes):
+        res[f"probability_prediction_{i}"] = res["probability_prediction"].apply(
+            lambda x: x[i] if len(x) > i else None
+        )
+    res = res.astype({"fold": "int"}).drop(columns="probability_prediction")
+    if n_classes == 2:
+        res = res.drop(columns=["probability_prediction_0"]).rename(
+            columns={"probability_prediction_1": "probability_prediction"}
+        )
+    return res
