@@ -1,3 +1,7 @@
+project_2/data
+project_1/datasets
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
