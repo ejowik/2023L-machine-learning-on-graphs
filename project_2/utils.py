@@ -10,15 +10,15 @@ def csv_to_visibility_graph(
     path: str = "../data/PCEC96_perc_diff_lag_1.csv",
     y_col: str = "PCEC96_perc_diff_lag_1",
     time_col: str = "reference_date",
-    add_node_features: bool = True,
+    add_node_features: bool = False,
 ) -> nx.Graph:
     """Generate a visibility graph from a given CSV file.
 
     Args:
-        path (str): The path to the CSV file.
-        y_col (str): The name of the column containing the time series data.
-        time_col (str): The name of the column containing the timestamps.
-        add_node_features (bool): Whether to add node features to the graph.
+        path (str): The path to the CSV file. Defaults to "../data/PCEC96_perc_diff_lag_1.csv".
+        y_col (str): The name of the column containing the time series data. Defaults to "PCEC96_perc_diff_lag_1".
+        time_col (str): The name of the column containing the timestamps. Defaults to "reference_date".
+        add_node_features (bool): Whether to add node features to the graph. Defaults to False.
 
     Returns:
         A NetworkX Graph object representing the visibility graph.
@@ -83,7 +83,8 @@ def csv_to_quantile_graph(
         a_min=None,
         a_max=1,
     )
-    trans_probs = generate_probabilities_from_random_walk(quantilized_ts)
     quantile_graph = nx.DiGraph()
-    quantile_graph.add_weighted_edges_from(trans_probs)
+    quantile_graph.add_weighted_edges_from(
+        generate_probabilities_from_random_walk(quantilized_ts)
+    )
     return quantile_graph
