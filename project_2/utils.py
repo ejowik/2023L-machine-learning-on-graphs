@@ -6,36 +6,28 @@ import pandas as pd
 import ts2vg
 
 
-def csv_to_visibility_graph(
-    path: str = "../data/PCEC96_perc_diff_lag_1.csv",
-    y_col: str = "PCEC96_perc_diff_lag_1",
-    time_col: str = "reference_date",
-    add_node_features: bool = False,
+def df_to_visibility_graph(
+    data: pd.DataFrame,
+    y_col: str,
 ) -> nx.Graph:
-    """Generate a visibility graph from a given CSV file.
-
+    """Convert a pandas DataFrame into a visibility graph
+    (for now only y_col is transformed into node-features but it could be easily extended in the future)
     Args:
-        path (str): The path to the CSV file. Defaults to "../data/PCEC96_perc_diff_lag_1.csv".
-        y_col (str): The name of the column containing the time series data. Defaults to "PCEC96_perc_diff_lag_1".
-        time_col (str): The name of the column containing the timestamps. Defaults to "reference_date".
-        add_node_features (bool): Whether to add node features to the graph. Defaults to False.
+        data (pd.DataFrame): The input DataFrame containing the data.
+        y_col (str): The name of the column in `data` to be used as the y-values.
 
     Returns:
-        A NetworkX Graph object representing the visibility graph.
+        nx.Graph: The visibility graph constructed from the data.
     """
-    cols = None if add_node_features else [y_col, time_col]
-    data = pd.read_csv(path, usecols=cols)
-    timestamps = pd.to_datetime(data[time_col]).apply(lambda x: x.timestamp())
+    data = data.copy()
+    data["x"] = data[y_col]
     vs = ts2vg.NaturalVG()
-    vis_graph = (
-        vs.build(data[y_col].to_numpy(), timestamps).as_networkx().to_undirected()
+    vis_graph = vs.build(data["x"].to_numpy()).as_networkx().to_undirected()
+    values_dict = data.loc[:, ["x"]].to_dict(orient="index")
+    nx.set_node_attributes(
+        vis_graph,
+        values=values_dict,
     )
-    nx.set_node_attributes(vis_graph, values=data[time_col].to_dict(), name=time_col)
-    if add_node_features:
-        nx.set_node_attributes(
-            vis_graph,
-            values=data.drop(columns=[y_col, time_col]).to_dict(orient="index"),
-        )
     return vis_graph
 
 
@@ -59,23 +51,21 @@ def generate_probabilities_from_random_walk(walk: np.array) -> list[tuple]:
     return transitions_prob
 
 
-def csv_to_quantile_graph(
-    path: str = "../data/PCEC96_perc_diff_lag_1.csv",
-    y_col: str = "PCEC96_perc_diff_lag_1",
+def df_to_quantile_graph(
+    data: pd.DataFrame,
+    y_col: str,
     n_quantiles: int = 5,
 ) -> nx.DiGraph:
-    """Generate a quantile graph (see "Novel features for time series analysis: a complex networks approach") from a given CSV file.
-
+    """Convert a pandas DataFrame into a quantile graph
+    (for now only maximal value in the given quantile is transformed into node feature but it could be extended in the future)
     Args:
-        path (str): Path to the CSV file. Defaults to "../data/PCEC96_perc_diff_lag_1.csv".
-        y_col (str): Name of the column containing the values to be discretized. Defaults to "PCEC96_perc_diff_lag_1".
-        n_quantiles (int): Number of quantiles to use. Defaults to 5.
+        data (pd.DataFrame): The input DataFrame containing the data.
+        y_col (str): The name of the column in `data` to be used as the y-values.
+        n_quantiles (int): the number of quantiles to divide time-series into. Defaults to 5.
 
     Returns:
-        nx.DiGraph: A directed graph where each node represents a quantile and edges represent transitions between
-        quantiles. The weight of each edge represents the probability of transitioning from one quantile to another.
+        nx.Graph: The quantile graph constructed from the data.
     """
-    data = pd.read_csv(path, usecols=[y_col])
     fractions = np.linspace(0, 1, num=n_quantiles + 1)
     quantiles = np.quantile(data[y_col], fractions, interpolation="midpoint")
     quantilized_ts = np.clip(
@@ -86,5 +76,11 @@ def csv_to_quantile_graph(
     quantile_graph = nx.DiGraph()
     quantile_graph.add_weighted_edges_from(
         generate_probabilities_from_random_walk(quantilized_ts)
+    )
+    nodes = sorted(quantile_graph.nodes)
+    nx.set_node_attributes(
+        quantile_graph,
+        values={nodes[it]: quantiles[it] for it in range(len(nodes))},
+        name="x",
     )
     return quantile_graph
