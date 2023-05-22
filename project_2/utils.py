@@ -106,6 +106,7 @@ class GraphDataset(Dataset):
         )
         self.X_ts = pd.DataFrame(X_ts.T)
         self.labels = torch.tensor(labels, dtype=int)
+        self.quantile = quantile
 
         subdirname = "quantile_" + str(n_quantiles) if quantile else "visibility"
         self.path = path.join(dirpath, dataset, subdirname)
@@ -135,8 +136,13 @@ class GraphDataset(Dataset):
 
     def __getitem__(self, idx):
         data = torch.load(path.join(self.path, f"{idx}.pt"))
-        data.y = self.labels[idx]
-        data.x = data.x.unsqueeze(1)
+        data.y = self.labels[idx] - 1
+        data.x = data.x.unsqueeze(1).to(torch.float32)
+        data.edge_attr = (
+            (data.weight.unsqueeze(1) * 100).to(torch.float32)
+            if self.quantile
+            else None
+        )
         return data
 
     def readucr(filename):
