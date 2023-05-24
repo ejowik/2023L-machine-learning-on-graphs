@@ -84,11 +84,15 @@ def df_to_quantile_graph(
         generate_probabilities_from_random_walk(quantilized_ts)
     )
     nodes = sorted(quantile_graph.nodes)
+    # print({nodes[it]: quantiles[it] for it in range(len(nodes))})
     nx.set_node_attributes(
         quantile_graph,
         values={nodes[it]: quantiles[it] for it in range(len(nodes))},
         name="x",
     )
+    print(quantile_graph.nodes)
+    for elem in quantile_graph.nodes:
+        print(quantile_graph.nodes[elem]["x"])
     return quantile_graph
 
 
@@ -97,37 +101,38 @@ class GraphDataset(Dataset):
         self,
         dirpath,
         dataset,
+        train=True,
         quantile: bool = True,
-        n_quantiles: int = 25,
+        n_quantiles: int = 100,
         cache: bool = True,
     ):
-        X_ts, labels = GraphDataset.readucr(
-            path.join(dirpath, dataset, f"{dataset}.txt")
-        )
+        traintest = "TRAIN" if train else "TEST"
+        subdirname = "quantile_" + str(n_quantiles) if quantile else "visibility"
+        self.ts_path = path.join(dirpath, dataset, f"{dataset}_{traintest}.txt")
+        X_ts, labels = GraphDataset.readucr(self.ts_path)
         self.X_ts = pd.DataFrame(X_ts.T)
         self.labels = torch.tensor(labels, dtype=int)
         self.quantile = quantile
 
-        subdirname = "quantile_" + str(n_quantiles) if quantile else "visibility"
-        self.path = path.join(dirpath, dataset, subdirname)
+        self.path = path.join(dirpath, dataset, subdirname, traintest)
         if path.exists(self.path):
             return
-        os.mkdir(self.path)
+        os.makedirs(self.path)
         for idx, col in tqdm(
             enumerate(self.X_ts.columns), total=len(self.X_ts.columns)
         ):
             if quantile:
+                G = df_to_quantile_graph(self.X_ts, y_col=col, n_quantiles=n_quantiles)
                 torch.save(
                     from_networkx(
-                        df_to_quantile_graph(
-                            self.X_ts, y_col=col, n_quantiles=n_quantiles
-                        )
+                        G, group_edge_attrs=["weight"], group_node_attrs=["x"]
                     ),
                     path.join(self.path, f"{idx}.pt"),
                 )
             else:
+                G = df_to_visibility_graph(self.X_ts, y_col=col)
                 torch.save(
-                    from_networkx(df_to_visibility_graph(self.X_ts, y_col=col)),
+                    from_networkx(G, group_node_attrs=["x"]),
                     path.join(self.path, f"{idx}.pt"),
                 )
 
@@ -137,15 +142,22 @@ class GraphDataset(Dataset):
     def __getitem__(self, idx):
         data = torch.load(path.join(self.path, f"{idx}.pt"))
         data.y = self.labels[idx] - 1
-        data.x = data.x.unsqueeze(1).to(torch.float32)
-        data.edge_attr = (
-            (data.weight.unsqueeze(1) * 100).to(torch.float32)
-            if self.quantile
-            else None
-        )
+        data.x = data.x  # .to(torch.float32)
+        if data.edge_attr is not None:
+            data.edge_attr = data.edge_attr.to(torch.float32)
+        # data.x = torch.cat((data.x, torch.full(data.x.shape, idx)), dim=1)
+        # print(data.x.shape)
+        # # data.edge_attr = (
+        # #     (data.weight.unsqueeze(1) * 100).to(torch.float32)
+        # #     if self.quantile
+        # #     else None
+        # # )
+        data.n_graph = torch.tensor(idx)
+        data.X_ts = torch.tensor(
+            GraphDataset.readucr(self.ts_path)[0], dtype=torch.float32
+        )[idx].reshape(1, -1)
         return data
 
     def readucr(filename):
         data = np.loadtxt(filename)
-        print()
         return data[:, 1:], data[:, 0].astype(int)
