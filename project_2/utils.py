@@ -60,7 +60,7 @@ def generate_probabilities_from_random_walk(walk: np.array) -> list[tuple]:
 def df_to_quantile_graph(
     data: pd.DataFrame,
     y_col: str,
-    n_quantiles: int = 5,
+    n_quantiles: int,
 ) -> nx.DiGraph:
     """Convert a pandas DataFrame into a quantile graph
     (for now only maximal value in the given quantile is transformed into node feature but it could be extended in the future)
@@ -84,15 +84,11 @@ def df_to_quantile_graph(
         generate_probabilities_from_random_walk(quantilized_ts)
     )
     nodes = sorted(quantile_graph.nodes)
-    # print({nodes[it]: quantiles[it] for it in range(len(nodes))})
     nx.set_node_attributes(
         quantile_graph,
         values={nodes[it]: quantiles[it] for it in range(len(nodes))},
         name="x",
     )
-    print(quantile_graph.nodes)
-    for elem in quantile_graph.nodes:
-        print(quantile_graph.nodes[elem]["x"])
     return quantile_graph
 
 
@@ -110,6 +106,7 @@ class GraphDataset(Dataset):
         subdirname = "quantile_" + str(n_quantiles) if quantile else "visibility"
         self.ts_path = path.join(dirpath, dataset, f"{dataset}_{traintest}.txt")
         X_ts, labels = GraphDataset.readucr(self.ts_path)
+        print(X_ts.shape)
         self.X_ts = pd.DataFrame(X_ts.T)
         self.labels = torch.tensor(labels, dtype=int)
         self.quantile = quantile
@@ -124,15 +121,13 @@ class GraphDataset(Dataset):
             if quantile:
                 G = df_to_quantile_graph(self.X_ts, y_col=col, n_quantiles=n_quantiles)
                 torch.save(
-                    from_networkx(
-                        G, group_edge_attrs=["weight"], group_node_attrs=["x"]
-                    ),
+                    from_networkx(G),
                     path.join(self.path, f"{idx}.pt"),
                 )
             else:
                 G = df_to_visibility_graph(self.X_ts, y_col=col)
                 torch.save(
-                    from_networkx(G, group_node_attrs=["x"]),
+                    from_networkx(G),
                     path.join(self.path, f"{idx}.pt"),
                 )
 
@@ -142,20 +137,12 @@ class GraphDataset(Dataset):
     def __getitem__(self, idx):
         data = torch.load(path.join(self.path, f"{idx}.pt"))
         data.y = self.labels[idx] - 1
-        data.x = data.x  # .to(torch.float32)
-        if data.edge_attr is not None:
-            data.edge_attr = data.edge_attr.to(torch.float32)
-        # data.x = torch.cat((data.x, torch.full(data.x.shape, idx)), dim=1)
-        # print(data.x.shape)
-        # # data.edge_attr = (
-        # #     (data.weight.unsqueeze(1) * 100).to(torch.float32)
-        # #     if self.quantile
-        # #     else None
-        # # )
-        data.n_graph = torch.tensor(idx)
-        data.X_ts = torch.tensor(
-            GraphDataset.readucr(self.ts_path)[0], dtype=torch.float32
-        )[idx].reshape(1, -1)
+        # to -1 bo na https://www.timeseriesclassification.com/ klasy zawsze zaczynają numerację od 1 a my chcemy od 0
+        data.x = data.x.unsqueeze(1).to(torch.float32)
+        if self.quantile:
+            data.edge_weight = data.weight.unsqueeze(1).to(torch.float32)
+        else:
+            data.edge_weight = None
         return data
 
     def readucr(filename):
