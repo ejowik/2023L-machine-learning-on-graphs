@@ -5,8 +5,10 @@ from os import path
 import networkx as nx
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 import torch
 import ts2vg
+from statsmodels.tsa.arima.model import ARIMA
 from torch.utils.data import Dataset
 from torch_geometric.utils.convert import from_networkx
 from tqdm.notebook import tqdm
@@ -67,7 +69,7 @@ def df_to_quantile_graph(
     Args:
         data (pd.DataFrame): The input DataFrame containing the data.
         y_col (str): The name of the column in `data` to be used as the y-values.
-        n_quantiles (int): the number of quantiles to divide time-series into. Defaults to 5.
+        n_quantiles (int): the number of quantiles to divide time-series into.
 
     Returns:
         nx.Graph: The quantile graph constructed from the data.
@@ -100,7 +102,6 @@ class GraphDataset(Dataset):
         train=True,
         quantile: bool = True,
         n_quantiles: int = 100,
-        cache: bool = True,
     ):
         traintest = "TRAIN" if train else "TEST"
         subdirname = "quantile_" + str(n_quantiles) if quantile else "visibility"
@@ -118,18 +119,18 @@ class GraphDataset(Dataset):
         for idx, col in tqdm(
             enumerate(self.X_ts.columns), total=len(self.X_ts.columns)
         ):
-            if quantile:
-                G = df_to_quantile_graph(self.X_ts, y_col=col, n_quantiles=n_quantiles)
-                torch.save(
-                    from_networkx(G),
-                    path.join(self.path, f"{idx}.pt"),
-                )
-            else:
-                G = df_to_visibility_graph(self.X_ts, y_col=col)
-                torch.save(
-                    from_networkx(G),
-                    path.join(self.path, f"{idx}.pt"),
-                )
+            G = (
+                df_to_quantile_graph(self.X_ts, y_col=col, n_quantiles=n_quantiles)
+                if quantile
+                else df_to_visibility_graph(self.X_ts, y_col=col)
+            )
+            ts_stats = get_ts_stats(self.X_ts[col])
+            for name, value in ts_stats.items():
+                nx.set_node_attributes(G, values=value, name=name)
+            torch.save(
+                from_networkx(G, group_node_attrs=["x"] + list(ts_stats.keys())),
+                path.join(self.path, f"{idx}.pt"),
+            )
 
     def __len__(self):
         return len(self.labels)
@@ -138,13 +139,53 @@ class GraphDataset(Dataset):
         data = torch.load(path.join(self.path, f"{idx}.pt"))
         data.y = self.labels[idx] - 1
         # to -1 bo na https://www.timeseriesclassification.com/ klasy zawsze zaczynają numerację od 1 a my chcemy od 0
-        data.x = data.x.unsqueeze(1).to(torch.float32)
+        data.x = data.x.to(torch.float32)
         if self.quantile:
-            data.edge_weight = data.weight.unsqueeze(1).to(torch.float32)
+            data.edge_attr = data.weight.unsqueeze(1).to(torch.float32)
         else:
-            data.edge_weight = None
+            data.edge_attr = None
         return data
 
     def readucr(filename):
         data = np.loadtxt(filename)
         return data[:, 1:], data[:, 0].astype(int)
+
+
+def get_ts_stats(time_series):
+    model = ARIMA(time_series, order=(1, 0, 0))
+    model_fit = model.fit()
+
+    summary_statistics = {
+        # "Mean": time_series.mean(),
+        # "Median": time_series.median(),
+        # "Minimum": time_series.min(),
+        # "Maximum": time_series.max(),
+        # "Standard Deviation": time_series.std(),
+        # "Variance": time_series.var(),
+        "Skewness": time_series.skew(),
+        "Kurtosis": time_series.kurtosis(),
+        "Autocorrelation (lag 1)": time_series.autocorr(1),
+        "Autocorrelation (lag 12)": time_series.autocorr(12),
+        "Autocorrelation (lag 24)": time_series.autocorr(24),
+        "Partial Autocorrelation (lag 1)": pd.Series(
+            sm.tsa.stattools.pacf(time_series, nlags=1)
+        ).iloc[-1],
+        "Partial Autocorrelation (lag 12)": pd.Series(
+            sm.tsa.stattools.pacf(time_series, nlags=12)
+        ).iloc[-1],
+        "Partial Autocorrelation (lag 24)": pd.Series(
+            sm.tsa.stattools.pacf(time_series, nlags=24)
+        ).iloc[-1],
+        "Augmented Dickey-Fuller Test (ADF)": sm.tsa.stattools.adfuller(time_series)[0],
+        "KPSS Test": sm.tsa.stattools.kpss(time_series)[0],
+        "Ljung-Box Q-Statistic": sm.stats.diagnostic.acorr_ljungbox(
+            time_series, lags=[1]
+        ).loc[1][0],
+        "Breusch-Godfrey LM Test (lag 1)": sm.stats.diagnostic.acorr_breusch_godfrey(
+            model_fit, nlags=1
+        )[0],
+        # "Jarque-Bera Test": sm.stats.stattools.jarque_bera(model_fit.resid)[0],
+    }
+
+    # Create a DataFrame to display the summary statistics
+    return summary_statistics
