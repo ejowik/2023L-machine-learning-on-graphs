@@ -2,6 +2,7 @@ import os
 from collections import Counter
 from os import path
 
+import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -102,6 +103,7 @@ class GraphDataset(Dataset):
         train=True,
         quantile: bool = True,
         n_quantiles: int = 100,
+        cache=False,
     ):
         traintest = "TRAIN" if train else "TEST"
         subdirname = "quantile_" + str(n_quantiles) if quantile else "visibility"
@@ -113,9 +115,10 @@ class GraphDataset(Dataset):
         self.quantile = quantile
 
         self.path = path.join(dirpath, dataset, subdirname, traintest)
-        if path.exists(self.path):
+        if not path.exists(self.path):
+            os.makedirs(self.path)
+        elif cache:
             return
-        os.makedirs(self.path)
         for idx, col in tqdm(
             enumerate(self.X_ts.columns), total=len(self.X_ts.columns)
         ):
@@ -127,14 +130,15 @@ class GraphDataset(Dataset):
             ts_stats = get_ts_stats(self.X_ts[col])
             for name, value in ts_stats.items():
                 nx.set_node_attributes(G, values=value, name=name)
-            nx.set_node_attributes(
-                G, values={node: node for node in G.nodes}, name="node_num"
-            )
+            node_attrs = ["x"]
+            if quantile:
+                nx.set_node_attributes(
+                    G, values={node: node for node in G.nodes}, name="node_num"
+                )
+                node_attrs = node_attrs + ["node_num"]
 
             torch.save(
-                from_networkx(
-                    G, group_node_attrs=["x", "node_num"] + list(ts_stats.keys())
-                ),
+                from_networkx(G, group_node_attrs=node_attrs + list(ts_stats.keys())),
                 path.join(self.path, f"{idx}.pt"),
             )
 
@@ -162,12 +166,12 @@ def get_ts_stats(time_series):
     model.fit()
 
     summary_statistics = {
-        # "Mean": time_series.mean(),
-        # "Median": time_series.median(),
-        # "Minimum": time_series.min(),
-        # "Maximum": time_series.max(),
-        # "Standard Deviation": time_series.std(),
-        # "Variance": time_series.var(),
+        # # "Mean": time_series.mean(),
+        # # "Median": time_series.median(),
+        # # "Minimum": time_series.min(),
+        # # "Maximum": time_series.max(),
+        # # "Standard Deviation": time_series.std(),
+        # # "Variance": time_series.var(),
         # "Skewness": time_series.skew(),
         # "Kurtosis": time_series.kurtosis(),
         "Autocorrelation (lag 1)": time_series.autocorr(1),
@@ -187,11 +191,31 @@ def get_ts_stats(time_series):
         # "Ljung-Box Q-Statistic": sm.stats.diagnostic.acorr_ljungbox(
         #     time_series, lags=[1]
         # ).loc[1][0],
-        # "Breusch-Godfrey LM Test (lag 1)": sm.stats.diagnostic.acorr_breusch_godfrey(
-        #     model_fit, nlags=1
-        # )[0],
-        # "Jarque-Bera Test": sm.stats.stattools.jarque_bera(model_fit.resid)[0],
+        # # "Jarque-Bera Test": sm.stats.stattools.jarque_bera(model_fit.resid)[0],
     }
 
     # Create a DataFrame to display the summary statistics
     return summary_statistics
+
+
+def save_model_stats(
+    model_name, train_losses, val_losses, train_accs, val_accs, elapsed_time
+):
+    model_dir = f"../data/{model_name}"
+    os.mkdir(model_dir)
+    for filename, content in {
+        "train_losses.txt": train_losses,
+        "val_losses.txt": val_losses,
+        "train_accs.txt": train_accs,
+        "val_accs.txt": val_accs,
+        "elapsed_time.txt": [elapsed_time],
+    }.items():
+        with open(os.path.join(model_dir, filename), "w") as fp:
+            for item in content:
+                fp.write("%s\n" % item)
+    plt.plot(train_losses)
+    plt.plot(val_losses)
+    plt.show()
+    plt.plot(train_accs)
+    plt.plot(val_accs)
+    plt.show()
