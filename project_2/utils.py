@@ -127,8 +127,14 @@ class GraphDataset(Dataset):
             ts_stats = get_ts_stats(self.X_ts[col])
             for name, value in ts_stats.items():
                 nx.set_node_attributes(G, values=value, name=name)
+            nx.set_node_attributes(
+                G, values={node: node for node in G.nodes}, name="node_num"
+            )
+
             torch.save(
-                from_networkx(G, group_node_attrs=["x"] + list(ts_stats.keys())),
+                from_networkx(
+                    G, group_node_attrs=["x", "node_num"] + list(ts_stats.keys())
+                ),
                 path.join(self.path, f"{idx}.pt"),
             )
 
@@ -153,7 +159,7 @@ class GraphDataset(Dataset):
 
 def get_ts_stats(time_series):
     model = ARIMA(time_series, order=(1, 0, 0))
-    model_fit = model.fit()
+    model.fit()
 
     summary_statistics = {
         # "Mean": time_series.mean(),
@@ -162,28 +168,28 @@ def get_ts_stats(time_series):
         # "Maximum": time_series.max(),
         # "Standard Deviation": time_series.std(),
         # "Variance": time_series.var(),
-        "Skewness": time_series.skew(),
-        "Kurtosis": time_series.kurtosis(),
+        # "Skewness": time_series.skew(),
+        # "Kurtosis": time_series.kurtosis(),
         "Autocorrelation (lag 1)": time_series.autocorr(1),
-        "Autocorrelation (lag 12)": time_series.autocorr(12),
-        "Autocorrelation (lag 24)": time_series.autocorr(24),
+        # "Autocorrelation (lag 12)": time_series.autocorr(12),
+        # "Autocorrelation (lag 24)": time_series.autocorr(24),
         "Partial Autocorrelation (lag 1)": pd.Series(
             sm.tsa.stattools.pacf(time_series, nlags=1)
         ).iloc[-1],
-        "Partial Autocorrelation (lag 12)": pd.Series(
-            sm.tsa.stattools.pacf(time_series, nlags=12)
-        ).iloc[-1],
-        "Partial Autocorrelation (lag 24)": pd.Series(
-            sm.tsa.stattools.pacf(time_series, nlags=24)
-        ).iloc[-1],
-        "Augmented Dickey-Fuller Test (ADF)": sm.tsa.stattools.adfuller(time_series)[0],
-        "KPSS Test": sm.tsa.stattools.kpss(time_series)[0],
-        "Ljung-Box Q-Statistic": sm.stats.diagnostic.acorr_ljungbox(
-            time_series, lags=[1]
-        ).loc[1][0],
-        "Breusch-Godfrey LM Test (lag 1)": sm.stats.diagnostic.acorr_breusch_godfrey(
-            model_fit, nlags=1
-        )[0],
+        # "Partial Autocorrelation (lag 12)": pd.Series(
+        #     sm.tsa.stattools.pacf(time_series, nlags=12)
+        # ).iloc[-1],
+        # "Partial Autocorrelation (lag 24)": pd.Series(
+        #     sm.tsa.stattools.pacf(time_series, nlags=24)
+        # ).iloc[-1],
+        # "Augmented Dickey-Fuller Test (ADF)": sm.tsa.stattools.adfuller(time_series)[0],
+        # "KPSS Test": sm.tsa.stattools.kpss(time_series)[0],
+        # "Ljung-Box Q-Statistic": sm.stats.diagnostic.acorr_ljungbox(
+        #     time_series, lags=[1]
+        # ).loc[1][0],
+        # "Breusch-Godfrey LM Test (lag 1)": sm.stats.diagnostic.acorr_breusch_godfrey(
+        #     model_fit, nlags=1
+        # )[0],
         # "Jarque-Bera Test": sm.stats.stattools.jarque_bera(model_fit.resid)[0],
     }
 
